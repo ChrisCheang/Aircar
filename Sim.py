@@ -69,24 +69,37 @@ class Aircar:
         self.t = t  # torque on rear axle, Nm
 
     def update(self, time_step):
-        roll_resist = -0.1  # acceleration due to rolling resistance
-        drag = 0.001   # drag proportionality coefficient (not cd, just here for testing reasons)
+        roll_resist = -0.2  # acceleration due to rolling resistance
+        drag = 0.01   # drag proportionality coefficient (not cd, just here for testing reasons)
         wheel_radius = 0.05    # wheel radius in m
-        self.s += self.v * time_step  # could use RK4 for this, but na
+        self.a = self.t / (wheel_radius * self.m) + roll_resist - drag * self.v ** 2
         self.v += self.a * time_step
-        if self.a >= 0:
-            self.a += roll_resist + self.t/(wheel_radius*self.m) - drag*self.v**2
-        self.t = self.t*0.9
+        self.s += self.v * time_step  # could use RK4 for this, but na
+        self.t = self.t*0.995
         return Aircar(self.s, self.v, self.a, self.p, self.m, self.m_rear, self.t)
 
 
 test_car = Aircar(0, 0, 0, 600000, 3.0, 1.5, 0.1)
 
 clock = 0
-time_step = 0.01
+time_step = 0.05
 
-while True:
+end = False
+time_list = []
+s_l = []
+v_l = []
+
+while not end:
     clock += time_step
     test_car = test_car.update(time_step)
-    print("time =", round(clock, 1), "s, distance =", round(test_car.s, 1), "m, velocity =", round(test_car.v, 1), "m/s, acceleration =", round(test_car.a, 1))
-    time.sleep(0.1)
+    print(round(clock, 1), "s,", round(test_car.s, 2), "m,", round(test_car.v, 2), "m/s,", round(test_car.a, 2), "m/s^2,", round(test_car.t, 2), "Nm")
+    time_list.append(clock)
+    s_l.append(test_car.s)
+    v_l.append(test_car.v)
+    if test_car.s > 25:
+        end = True
+
+plot.plot(time_list,s_l)
+plot.show()
+plot.plot(time_list,v_l)
+plot.show()
