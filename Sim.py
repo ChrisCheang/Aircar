@@ -22,9 +22,9 @@ class Tank:
         m = (self.p0 * self.v) / (R * self.T0)
         m_1 = m - nozzle.mdot_max() * time_step
         p_1 = m_1 * R * self.T0 / self.v
-        T_1 = ((self.p0 / p_1) ** 1.4 * self.T0 ** 0.4) ** (1/1.4)
-        d_1 = p_1 / (R * T_1)
-        return Tank(p_1, T_1, d_1)
+        #T_1 = ((self.p0 / p_1) ** 1.4 * self.T0 ** 0.4) ** (1/1.4)        # some big issue with temp calc, assume isothermal for now
+        d_1 = p_1 / (R * self.T0)
+        return Tank(p_1, self.T0, d_1)
 
 
 class Nozzle:
@@ -33,7 +33,7 @@ class Nozzle:
     #   too complicated to model the profile on here, so this takes in nozzles that do choke
     #   so isentropic tables and flow relations can be used.
 
-    def __init__(self, p0, T0, d0, pb, throat_diameter=0.0016):
+    def __init__(self, p0, T0, d0, pb, throat_diameter=0.0016):      # 0.0016
         self.p0 = p0  # Inlet pressure
         self.T0 = T0  # Inlet temp
         self.d0 = d0  # Inlet density
@@ -66,18 +66,21 @@ class Nozzle:
 
 
 class TurbineDrive:
-    def __init__(self, p0, T0, d0, p1, T1, d1):
+    def __init__(self, p0, T0, d0, p1, T1, d1, efficiency=0.1):
         self.p0 = p0  # Inlet pressure
         self.T0 = T0  # Inlet temp
         self.d0 = d0  # Inlet density
         self.p1 = p1  # Outlet pressure
         self.T1 = T1  # Outlet temp
         self.d1 = d1  # Outlet density
+        self.efficiency = efficiency
 
     def specific_speed(self, w, Q):
         h = (self.p0 - self.p1) / 98100
         return w * (Q ** (1 / 2)) / ((9.81 * h) ** (3 / 4))
 
+    def max_power(self, nozzle):
+        return (self.p0 - self.p1) / nozzle.q_max()
 
 class Aircar:
     def __init__(self, s, v, a, m, t):
@@ -101,7 +104,7 @@ class Aircar:
 
 
 test_tank = Tank(p0=600000, T0=298, d0=7)
-test_nozzle = Nozzle(p0=test_tank.p0, T0=test_tank.T0, d0=test_tank.d0, pb=0.9*test_tank.p0)
+test_nozzle = Nozzle(p0=test_tank.p0, T0=test_tank.T0, d0=test_tank.d0, pb=0.5283*test_tank.p0)
 test_turbine = TurbineDrive(p0=test_nozzle.pb, T0=test_nozzle.T0, d0=test_nozzle.d0, p1=100000, T1=298, d1=1)
 test_car = Aircar(s=0, v=0, a=0, m=3.0, t=0.1)
 
@@ -113,18 +116,25 @@ time_list = []
 s_l = []
 v_l = []
 
+
 while not end:
     clock += time_step
     test_car = test_car.update(time_step)
-    test_nozzle = Nozzle(p0=test_tank.p0, T0=test_tank.T0, d0=test_tank.d0, pb=0.9*test_tank.p0)
+    pb = 0.9 * test_tank.p0
+    if pb < 120000:
+        pb = 100000
+    test_nozzle = Nozzle(p0=test_tank.p0, T0=test_tank.T0, d0=test_tank.d0, pb=pb)
     test_tank = test_tank.update(time_step, test_nozzle)
-    print(round(clock, 1), "s,", round(test_car.s, 2), "m,", round(test_car.v, 2), "m/s,", round(test_car.a, 2), "m/s^2,", round(test_car.t, 2), "Nm")
-    print(round(clock, 1), "s,", round(test_tank.p0, 0), "Pa, ", round(test_nozzle.mdot_max(), 5), "kg/s")
+    #print(round(clock, 1), "s,", round(test_car.s, 2), "m,", round(test_car.v, 2), "m/s,", round(test_car.a, 2), "m/s^2,", round(test_car.t, 2), "Nm")
+    print(round(clock, 1), "s,", round(test_tank.p0, 0), "Pa, ", round(test_tank.T0, 0), "K, ", round(test_nozzle.mdot_max(), 5), "kg/s, ", round(test_nozzle.exhaust_diameter(), 5), "mm")
+
     time_list.append(clock)
     s_l.append(test_car.s)
     v_l.append(test_car.v)
     if test_car.s > 25:
         end = True
+
+
 
 plot.plot(time_list, s_l)
 # plot.show()
