@@ -7,12 +7,24 @@ import matplotlib.pyplot as plot
 
 z = symbols("z", real=True)
 
+# Properties of air
+R = 287
+
 
 class Tank:
-    def __init__(self, p0, T0, d0):
+    def __init__(self, p0, T0, d0, v=0.002):
         self.p0 = p0  # Stagnation properties
         self.T0 = T0
         self.d0 = d0
+        self.v = v
+
+    def update(self, time_step, nozzle):
+        m = (self.p0 * self.v) / (R * self.T0)
+        m_1 = m - nozzle.mdot_max() * time_step
+        p_1 = m_1 * R * self.T0 / self.v
+        T_1 = ((self.p0 / p_1) ** 1.4 * self.T0 ** 0.4) ** (1/1.4)
+        d_1 = p_1 / (R * T_1)
+        return Tank(p_1, T_1, d_1)
 
 
 class Nozzle:
@@ -28,12 +40,13 @@ class Nozzle:
         self.pb = pb  # back pressure, i.e. pressure going into turbine
         self.throat_diameter = throat_diameter
 
-    def q_max(self):
-        R = 287
+    def mdot_max(self):
         A_throat = np.pi * (self.throat_diameter / 2) ** 2
         exp = (1.4 + 1) / (2 * (1.4 - 1))
-        mdot_max = self.p0 * A_throat * math.sqrt(1.4 / (R * self.T0)) * (2 / (1.4 + 1)) ** (exp)
-        return mdot_max / self.d0
+        return self.p0 * A_throat * math.sqrt(1.4 / (R * self.T0)) * (2 / (1.4 + 1)) ** (exp)
+
+    def q_max(self):
+        return self.mdot_max() / self.d0
 
     def p_critical(self):
         ratio = ((1.4 + 1) / 2) ** (1.4 / (1.4 - 1))  # eq. 8.4 fluids book
@@ -43,17 +56,17 @@ class Nozzle:
         ratio = self.p0 / self.pb
         return math.sqrt(5 * (ratio ** (1 / 3.5) - 1))  # inverse of eq. 7.5, one of the isentropic flow relations
 
-    def exhaust_diameter(
-            self):  # required exhaust area to reach/accommodate the desired back pressure, using equation 8.7, the area-mach relation
-        exp = (1.4 + 1) / (2 * (1.4 - 1))
-        ratio = ((2 / (1.4 + 1)) * (
-                    2 * (1 + (1.4 - 1) * (self.M_exhaust() ** 2) / 2) / (1.4 + 1)) ** exp) / self.M_exhaust()
+    def exhaust_diameter(self):  # required exhaust area to reach/accommodate pb, using equation 8.7
+        #exp = (1.4 + 1) / (2 * (1.4 - 1))
+        #ratio = ((2 / (1.4 + 1)) * (2 * (1 + (1.4 - 1) * (self.M_exhaust() ** 2) / 2) / (1.4 + 1)) ** exp) / self.M_exhaust()
+
+        ratio = ((5/6) * (1 + 0.2*(self.M_exhaust())**2)) ** 3 / self.M_exhaust()
         A_exhaust = ratio * np.pi * (self.throat_diameter / 2) ** 2
         return math.sqrt(4 * A_exhaust / np.pi)
 
 
 class TurbineDrive:
-    def __init__(self, p0, T0, d0, p1, T1, d1, ):
+    def __init__(self, p0, T0, d0, p1, T1, d1):
         self.p0 = p0  # Inlet pressure
         self.T0 = T0  # Inlet temp
         self.d0 = d0  # Inlet density
@@ -87,15 +100,19 @@ class Aircar:
         return Aircar(self.s, self.v, self.a, self.m, self.t)
 
 
+test_tank = Tank(p0=600000, T0=298, d0=7)
+test_nozzle = Nozzle(p0=600000, T0=298, d0=7, pb=0.9*600000, throat_diameter=0.0016)
+test_turbine = TurbineDrive(p0=test_nozzle.pb, T0=298, d0=7, p1=100000, T1=298, d1=1)
 test_car = Aircar(s=0, v=0, a=0, m=3.0, t=0.1)
-test_nozzle = Nozzle(p0=600000, T0=298, d0=7, pb=400000, throat_diameter=0.0016)
-test_turbine = TurbineDrive(600000, 298, 7, 100000, 298, 1)
+
 
 turbine_w = 5000 * 2 * np.pi / 60
 
-print(test_nozzle.q_max())
-print(test_nozzle.p_critical())
-print(test_nozzle.exhaust_diameter())
+print(test_nozzle.q_max(), "m3/s")
+print(test_nozzle.p_critical(), "Pa")
+print(test_nozzle.throat_diameter, "mm")
+print("M = ", test_nozzle.M_exhaust())
+print(test_nozzle.exhaust_diameter(), "mm")
 print(test_turbine.specific_speed(turbine_w, test_nozzle.q_max()))
 
 clock = 0
