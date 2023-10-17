@@ -33,7 +33,7 @@ class Nozzle:
     #   too complicated to model the profile on here, so this takes in nozzles that do choke
     #   so isentropic tables and flow relations can be used.
 
-    def __init__(self, p0, T0, d0, pb, throat_diameter):
+    def __init__(self, p0, T0, d0, pb, throat_diameter=0.0016):
         self.p0 = p0  # Inlet pressure
         self.T0 = T0  # Inlet temp
         self.d0 = d0  # Inlet density
@@ -101,19 +101,9 @@ class Aircar:
 
 
 test_tank = Tank(p0=600000, T0=298, d0=7)
-test_nozzle = Nozzle(p0=600000, T0=298, d0=7, pb=0.9*600000, throat_diameter=0.0016)
-test_turbine = TurbineDrive(p0=test_nozzle.pb, T0=298, d0=7, p1=100000, T1=298, d1=1)
+test_nozzle = Nozzle(p0=test_tank.p0, T0=test_tank.T0, d0=test_tank.d0, pb=0.9*test_tank.p0)
+test_turbine = TurbineDrive(p0=test_nozzle.pb, T0=test_nozzle.T0, d0=test_nozzle.d0, p1=100000, T1=298, d1=1)
 test_car = Aircar(s=0, v=0, a=0, m=3.0, t=0.1)
-
-
-turbine_w = 5000 * 2 * np.pi / 60
-
-print(test_nozzle.q_max(), "m3/s")
-print(test_nozzle.p_critical(), "Pa")
-print(test_nozzle.throat_diameter, "mm")
-print("M = ", test_nozzle.M_exhaust())
-print(test_nozzle.exhaust_diameter(), "mm")
-print(test_turbine.specific_speed(turbine_w, test_nozzle.q_max()))
 
 clock = 0
 time_step = 0.05
@@ -126,7 +116,10 @@ v_l = []
 while not end:
     clock += time_step
     test_car = test_car.update(time_step)
-    # print(round(clock, 1), "s,", round(test_car.s, 2), "m,", round(test_car.v, 2), "m/s,", round(test_car.a, 2), "m/s^2,", round(test_car.t, 2), "Nm")
+    test_nozzle = Nozzle(p0=test_tank.p0, T0=test_tank.T0, d0=test_tank.d0, pb=0.9*test_tank.p0)
+    test_tank = test_tank.update(time_step, test_nozzle)
+    print(round(clock, 1), "s,", round(test_car.s, 2), "m,", round(test_car.v, 2), "m/s,", round(test_car.a, 2), "m/s^2,", round(test_car.t, 2), "Nm")
+    print(round(clock, 1), "s,", round(test_tank.p0, 0), "Pa, ", round(test_nozzle.mdot_max(), 5), "kg/s")
     time_list.append(clock)
     s_l.append(test_car.s)
     v_l.append(test_car.v)
