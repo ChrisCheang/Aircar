@@ -8,78 +8,95 @@ import matplotlib.pyplot as plot
 z = symbols("z", real=True)
 
 
-def h(x):
-    if x > 0:
-        return x
-    else:
-        return 0
+class Tank:
+    def __init__(self, p0, T0, d0):
+        self.p0 = p0  # Stagnation properties
+        self.T0 = T0
+        self.d0 = d0
 
 
-class Shaft:
-    def __init__(self, length, profile, loading_xy, loading_z=False, loading_torsion=False, material="Steel"):
-        self.length = length  # float
-        self.profile = smp.sympify(profile)  # function (sympy piecewise)
-        self.loading_xy = loading_xy  # array of 3d vectors (x, y, z(along shaft)), n x 3 matrix
-        self.loading_z = loading_z  # 2d vector array (loading, z(along shaft)), n x 2 matrix, false boolean if none
-        self.loading_torsion = loading_torsion  # array of 2d vectors (torque, z(along shaft)), i.e. n x 2 matrix
-        self.material = material
+class Nozzle:
+    #   design inputs: stagnation properties, back pressure (i.e. pressure to go into turbine)
+    #   outputs: maxmimum flow rate, area expansion ratio
+    #   too complicated to model the profile on here, so this takes in nozzles that do choke
+    #   so isentropic tables and flow relations can be used.
 
-    def shear_force(self, dim, z):
-        if dim == "x":
-            i = 0
-        elif dim == "y":
-            i = 1
-        sf = 0
-        for load in range(len(self.loading_xy)):
-            if self.loading_xy[load][2] > z:
-                sf -= self.loading_xy[load][i]
-        return sf
+    def __init__(self, p0, T0, d0, pb, throat_diameter):
+        self.p0 = p0  # Inlet pressure
+        self.T0 = T0  # Inlet temp
+        self.d0 = d0  # Inlet density
+        self.pb = pb  # back pressure, i.e. pressure going into turbine
+        self.throat_diameter = throat_diameter
 
-    def shear_force_combined(self, z):
-        sf = math.sqrt(self.shear_force("x", z) ** 2 + self.shear_force("y", z) ** 2)
-        return sf
+    def q_max(self):
+        R = 287
+        A_throat = np.pi * (self.throat_diameter / 2) ** 2
+        exp = (1.4 + 1) / (2 * (1.4 - 1))
+        mdot_max = self.p0 * A_throat * math.sqrt(1.4 / (R * self.T0)) * (2 / (1.4 + 1)) ** (exp)
+        return mdot_max / self.d0
 
-    def shear_force_draw(self, dim):
-        sf = []
-        if dim == "combined":
-            for l in range(self.length):
-                sf.append(self.shear_force_combined(l))
-        else:
-            for l in range(self.length):
-                sf.append(self.shear_force(dim, l))
-        plot.plot(range(self.length), sf)
-        plot.show()
+    def p_critical(self):
+        ratio = ((1.4 + 1) / 2) ** (1.4 / (1.4 - 1))  # eq. 8.4 fluids book
+        return self.p0 / ratio
+
+    def M_exhaust(self):  # Mach no. of flow out of exit
+        ratio = self.p0 / self.pb
+        return math.sqrt(5 * (ratio ** (1 / 3.5) - 1))  # inverse of eq. 7.5, one of the isentropic flow relations
+
+    def exhaust_diameter(
+            self):  # required exhaust area to reach/accommodate the desired back pressure, using equation 8.7, the area-mach relation
+        exp = (1.4 + 1) / (2 * (1.4 - 1))
+        ratio = ((2 / (1.4 + 1)) * (
+                    2 * (1 + (1.4 - 1) * (self.M_exhaust() ** 2) / 2) / (1.4 + 1)) ** exp) / self.M_exhaust()
+        A_exhaust = ratio * np.pi * (self.throat_diameter / 2) ** 2
+        return math.sqrt(4 * A_exhaust / np.pi)
 
 
-test_shaft_loading_xy = np.array([[2, 0, 0], [-2, 1, 80], [-2, -1, 120], [2, 0, 200]])
-test_shaft = Shaft(200, 10, test_shaft_loading_xy)  # Piecewise((10, 0 <= z < 100), (20, 100 <= z <= 200))
+class TurbineDrive:
+    def __init__(self, p0, T0, d0, p1, T1, d1, ):
+        self.p0 = p0  # Inlet pressure
+        self.T0 = T0  # Inlet temp
+        self.d0 = d0  # Inlet density
+        self.p1 = p1  # Outlet pressure
+        self.T1 = T1  # Outlet temp
+        self.d1 = d1  # Outlet density
 
-# test_shaft.shear_force_draw("x")
-# test_shaft.shear_force_draw("y")
+    def specific_speed(self, w, Q):
+        h = (self.p0 - self.p1) / 98100
+        return w * (Q ** (1 / 2)) / ((9.81 * h) ** (3 / 4))
 
 
 class Aircar:
-    def __init__(self, s, v, a, p, m, m_rear, t):
+    def __init__(self, s, v, a, m, t):
         self.s = s  # distance travelled, m
         self.v = v  # velocity, m/s
         self.a = a  # acceleration, m/s^2
-        self.p = p  # tank pressure, Pa
         self.m = m  # vehicle mass, kg
-        self.m_rear = m_rear  # traction mass on real axle, kg
         self.t = t  # torque on rear axle, Nm
 
     def update(self, time_step):
         roll_resist = -0.2  # acceleration due to rolling resistance
-        drag = 0.01   # drag proportionality coefficient (not cd, just here for testing reasons)
-        wheel_radius = 0.05    # wheel radius in m
+        drag = 0.01  # drag proportionality coefficient (not cd, just here for testing reasons)
+        wheel_radius = 0.05  # wheel radius in m
         self.a = self.t / (wheel_radius * self.m) + roll_resist - drag * self.v ** 2
         self.v += self.a * time_step
         self.s += self.v * time_step  # could use RK4 for this, but na
-        self.t = self.t*0.995
-        return Aircar(self.s, self.v, self.a, self.p, self.m, self.m_rear, self.t)
+        self.t = self.t * 0.995
+        if self.t < 0.03:
+            self.t = self.t * 0.5
+        return Aircar(self.s, self.v, self.a, self.m, self.t)
 
 
-test_car = Aircar(0, 0, 0, 600000, 3.0, 1.5, 0.1)
+test_car = Aircar(s=0, v=0, a=0, m=3.0, t=0.1)
+test_nozzle = Nozzle(p0=600000, T0=298, d0=7, pb=400000, throat_diameter=0.0016)
+test_turbine = TurbineDrive(600000, 298, 7, 100000, 298, 1)
+
+turbine_w = 5000 * 2 * np.pi / 60
+
+print(test_nozzle.q_max())
+print(test_nozzle.p_critical())
+print(test_nozzle.exhaust_diameter())
+print(test_turbine.specific_speed(turbine_w, test_nozzle.q_max()))
 
 clock = 0
 time_step = 0.05
@@ -92,14 +109,14 @@ v_l = []
 while not end:
     clock += time_step
     test_car = test_car.update(time_step)
-    print(round(clock, 1), "s,", round(test_car.s, 2), "m,", round(test_car.v, 2), "m/s,", round(test_car.a, 2), "m/s^2,", round(test_car.t, 2), "Nm")
+    # print(round(clock, 1), "s,", round(test_car.s, 2), "m,", round(test_car.v, 2), "m/s,", round(test_car.a, 2), "m/s^2,", round(test_car.t, 2), "Nm")
     time_list.append(clock)
     s_l.append(test_car.s)
     v_l.append(test_car.v)
     if test_car.s > 25:
         end = True
 
-plot.plot(time_list,s_l)
-plot.show()
-plot.plot(time_list,v_l)
-plot.show()
+plot.plot(time_list, s_l)
+# plot.show()
+plot.plot(time_list, v_l)
+# plot.show()
