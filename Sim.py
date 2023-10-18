@@ -10,6 +10,10 @@ z = symbols("z", real=True)
 # Properties of air
 R = 287
 
+# Some vehicle properties
+step_down = 7
+throat_diameter = 0.0016
+
 
 class Tank:
     def __init__(self, p0, T0, d0, v=0.002):
@@ -41,7 +45,7 @@ class Nozzle:
 
     # on further thought,
 
-    def __init__(self, p0, T0, d0, pb, throat_diameter=0.0016, discharged=False):      # 0.0016
+    def __init__(self, p0, T0, d0, pb, throat_diameter=throat_diameter, discharged=False):      # 0.0016
         self.p0 = p0  # Inlet pressure
         self.T0 = T0  # Inlet temp
         self.d0 = d0  # Inlet density
@@ -54,7 +58,7 @@ class Nozzle:
         exp = (1.4 + 1) / (2 * (1.4 - 1))
         return self.p0 * A_throat * math.sqrt(1.4 / (R * self.T0)) * (2 / (1.4 + 1)) ** exp
 
-    def q_max(self):
+    def q_max(self):             # this is constant!
         return self.mdot_max() / self.d0
 
     def p_critical(self):
@@ -78,40 +82,73 @@ class Nozzle:
 
 
 class TurbineDrive:
-    def __init__(self, p0, T0, d0, p1, T1, d1, efficiency=0.1, r=0.03):
+    # currently this uses a somewhat more empirical approach (as I have no idea how to do it otherwise)
+    # , using data, findings and assumptions present in this video: https: // www.youtube.com / watch?v = RMUHxo2TOUk
+    # The efficiency is first estimated to be 10% (roughly similar to that found in the above video), and maximum
+    # turbine power is calculated as efficiency x integral of pdv of an isothermal process covering the inlet and
+    # outlet conditions (lower pressure drop so reasonable assumption, can be updated later). The no-load rpm is then
+    # estimated using the speed of a column of gas with nozzle q_max and ambient density (air expands and comes out of
+    # blades at atm) and the "swept" area of the blades as the tip speed. A power curve similar to that in the video
+    # is then extrapolated using these two values, which can then be used to calculate torque curves etc.
+
+    def __init__(self, p0, T0, d0, p1, T1, d1, nozzle, efficiency=0.1, r=0.03):
         self.p0 = p0  # Inlet pressure
         self.T0 = T0  # Inlet temp
         self.d0 = d0  # Inlet density
         self.p1 = p1  # Outlet pressure
         self.T1 = T1  # Outlet temp
         self.d1 = d1  # Outlet density
+        self.nozzle = nozzle
         self.efficiency = efficiency
         self.r = r  # radius
 
-    def specific_speed(self, w, Q):
+    def specific_speed(self, w):
         h = (self.p0 - self.p1) / 98100
+        Q = self.nozzle.q_max()
         return w * (Q ** (1 / 2)) / ((9.81 * h) ** (3 / 4))
 
-    def power(self, nozzle, efficiency=0.08):
-        return efficiency * self.p1 * nozzle.q_max() * math.log(self.p0 / self.p1, np.e)
+    def max_power(self, efficiency=0.08):
+        if self.p1 < self.p0:
+            return efficiency * self.p1 * self.nozzle.q_max() * math.log(self.p0 / self.p1, np.e)   # method from video
+            #return efficiency * (self.p0 - self.p1) * self.nozzle.q_max()    # method from P.J.
+        else:
+            return 0
 
-    def max_w(self, nozzle):
-        q = nozzle.q_max()
-        blade_swept_area = 0.020 * 0.020  # thickness * radial depth of blades
-        tip_speed = q / blade_swept_area
+    def no_load_w(self):
+        blade_swept_area = 0.010 * 0.010  # thickness * radial depth of blades
+        blade_thickness_ratio = 0.2    # how much of the space is taken up by the blades
+        tip_speed = ((self.nozzle.mdot_max() / (1 - blade_thickness_ratio)) / self.d1) / blade_swept_area
         return tip_speed / self.r
+
+    def no_load_rpm(self):
+        return self.no_load_w() * 60 / (2 * np.pi)
+
+    def torque(self, rpm):
+        # assumption: maximum power occurs at 50% of no_load_rpm
+        # assumption: torque curve is linear
+
+        half_no_load_rpm_torque = self.max_power() / (0.5 * self.no_load_w())
+        stall_torque = 2 * half_no_load_rpm_torque
+        if rpm < self.no_load_rpm():
+            return stall_torque - (stall_torque * rpm / self.no_load_rpm())
+        else:
+            return 0
 
 
 class Aircar:
-    def __init__(self, s, v, a, m, t):
+    def __init__(self, s, v, a, m, rpm, t, drive, step_down=step_down, r=0.0401):
         self.s = s  # distance travelled, m
         self.v = v  # velocity, m/s
         self.a = a  # acceleration, m/s^2
         self.m = m  # vehicle mass, kg
+        self.rpm = rpm   # wheel rpm
         self.t = t  # torque on rear axle, Nm
+        self.drive = drive
+        self.step_down = step_down    #step down ratio in gearbox
+        self.r = r  # rear wheel radius
 
-    def update(self, time_step):
-        roll_resist = -0.2  # acceleration due to rolling resistance
+    def update(self, time_step, drive):      # change in mass of air canister negligible
+        roll_resist = -0.1  # acceleration due to rolling resistance
         drag = 0.01  # drag proportionality coefficient (not cd, just here for testing reasons)
         wheel_radius = 0.05  # wheel radius in m
         if self.v >= 0:
@@ -120,17 +157,16 @@ class Aircar:
             self.a = 0
         self.v += self.a * time_step
         self.s += self.v * time_step  # could use RK4 for this, but na
-        self.t = self.t * 0.995     # right now this is NOT linked to time_step, so
-        if self.t < 0.03:
-            self.t = self.t * 0.5
-        return Aircar(self.s, self.v, self.a, self.m, self.t)
+        self.rpm = (self.v/self.r) * 60 / (2*np.pi)
+        self.t = drive.torque(self.rpm * self.step_down) * self.step_down
+        #self.t = self.t*0.995
+        return Aircar(s=self.s, v=self.v, a=self.a, m=self.m, rpm=self.rpm, t=self.t, drive=self.drive)
 
 
-test_tank = Tank(p0=600000, T0=298, d0=7)
-test_nozzle = Nozzle(p0=test_tank.p0, T0=test_tank.T0, d0=test_tank.d0, pb=0.99*test_tank.p0)
-test_nozzle.pb = 0.99*test_nozzle.p0
-test_turbine = TurbineDrive(p0=test_nozzle.pb, T0=test_nozzle.T0, d0=test_nozzle.pb, p1=100000, T1=298, d1=1)
-test_car = Aircar(s=0, v=0, a=0, m=3.0, t=0.1)
+tank = Tank(p0=600000, T0=298, d0=7)
+nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.99 * tank.p0)
+turbine = TurbineDrive(p0=nozzle.pb, T0=nozzle.T0, d0=nozzle.d0, p1=100000, T1=298, d1=1, nozzle=nozzle)    #the d0 is wrong but not used so ignore for now
+car = Aircar(s=0, v=0, a=0, m=3.0, rpm=0, t=turbine.torque(0)*step_down, drive=turbine)
 
 clock = 0
 time_step = 0.05
@@ -140,56 +176,71 @@ time_list = []
 s_l = []
 v_l = []
 
-print(test_nozzle.mdot_max())
-print(test_nozzle.q_max())
-print(test_turbine.power(test_nozzle))
-print(test_turbine.max_w(test_nozzle))
+
+print(turbine.torque(483))
 
 
-def print_stuff_gas():
+def print_stuff_tank_nozzle():
     print(round(clock, 1), "s,",
           "Tank: ",
-          round(test_tank.p0, 0), "Pa, ",
-          round(test_tank.T0, 0), "K, ",
-          round(1000 * test_tank.m(), 1), "g, ",
+          round(tank.p0, 0), "Pa, ",
+          round(tank.T0, 0), "K, ",
+          round(tank.d0, 1), "kg/m^3, ",
+          round(1000 * tank.m(), 1), "g, ",
           "Nozzle: ",
-          round(test_nozzle.mdot_max(), 5), "kg/s, ",
-          round(test_nozzle.p0 / test_nozzle.pb, 2), "pressure ratio, ",
-          round(test_nozzle.M_exhaust(), 2), "Mach, ",
-          round(1000 * test_nozzle.exhaust_diameter(), 5), "mm, ",)
+          round(nozzle.mdot_max(), 5), "kg/s, ",
+          #round(test_nozzle.d0, 3), "kg/m^3, ",
+          round(nozzle.q_max(), 6), "m^3/s, ",
+          round(nozzle.p0 / nozzle.pb, 2), "pressure ratio, ",
+          round(nozzle.M_exhaust(), 2), "Mach, ",
+          round(1000 * nozzle.exhaust_diameter(), 5), "mm ", )
 
 
 def print_stuff_drive():
     print(round(clock, 1), "s,",
-          round(test_car.s, 2), "m,",
-          round(test_car.v, 2), "m/s,",
-          round(test_car.a, 2), "m/s^2,",
-          round(test_car.t, 2), "Nm")
+          round(car.s, 2), "m,",
+          round(car.v, 2), "m/s,",
+          round(car.a, 2), "m/s^2,",
+          round(car.t, 2), "Nm, ",
+          round(car.rpm, 1), "rpm"
+          )
 
 
-print_stuff_gas()
+def print_stuff_turbine():
+    print(round(clock, 1), "s,",
+          round(turbine.p0, 1), "Pa (inlet), ",
+          round(turbine.max_power(), 2), "W max, ",
+          round(car.rpm * step_down, 0), "rpm operation, ",
+          round(turbine.no_load_rpm(), 0), "rpm max, ",
+          round(turbine.torque(car.rpm * step_down), 2), "Nm operation"
+          )
+
 
 while not end:
     clock += time_step
-    test_car = test_car.update(time_step)
-    test_nozzle = Nozzle(p0=test_tank.p0, T0=test_tank.T0, d0=test_tank.d0, pb=0.99*test_tank.p0)
-    if test_tank.p0 > 100000/0.98:
-        test_tank = test_tank.update(time_step, test_nozzle)
-    else:
-        test_tank = Tank(p0=100000, T0=298, d0=1)
 
-    #print_stuff_drive()
-    print_stuff_gas()
+    car = car.update(time_step, turbine)
+    turbine = TurbineDrive(p0=nozzle.pb, T0=nozzle.T0, d0=nozzle.d0, p1=100000, T1=298, d1=1, nozzle=nozzle)
+    nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.99*tank.p0)
+    if tank.p0 > 100000/0.98:
+        tank = tank.update(time_step, nozzle)
+    else:
+        tank = Tank(p0=100000, T0=298, d0=1)
+
+
+    print_stuff_drive()
+    print_stuff_tank_nozzle()
+    print_stuff_turbine()
 
     time_list.append(clock)
-    s_l.append(test_car.s)
-    v_l.append(test_car.v)
-    if test_car.s > 25 or clock > 30:
+    s_l.append(car.s)
+    v_l.append(car.v)
+    if car.s > 25 or clock > 30:
         end = True
 
 
 
 plot.plot(time_list, s_l)
-# plot.show()
+plot.show()
 plot.plot(time_list, v_l)
-# plot.show()
+plot.show()
