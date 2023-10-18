@@ -1,7 +1,5 @@
 import math
-import time
 import numpy as np
-import sympy as smp
 from sympy import *
 import matplotlib.pyplot as plot
 
@@ -9,6 +7,7 @@ z = symbols("z", real=True)
 
 # Properties of air
 R = 287
+p_ambient = 100000
 
 # Some vehicle properties
 step_down = 7
@@ -24,6 +23,10 @@ class Tank:
 
     def m(self):
         return (self.p0 * self.v) / (R * self.T0)
+
+    def stored_energy_isothermal(self):
+        # isothermal case for overall consideration reasonable (?) as discharge is relatively long at 8 sec
+        return self.p0 * self.v * math.log(self.p0 / p_ambient, np.e)
 
     def update(self, time_step, nozzle):
         m_1 = self.m() - nozzle.mdot_max() * time_step
@@ -43,7 +46,7 @@ class Nozzle:
     # case, as the exhaust of the turbine is constricted by the housing + turbine so assume the pressure there will be
     # higher), then calculate the subsonic case pb from that as the output
 
-    # on further thought,
+    # on further thought, no - design around the output exit dia.
 
     def __init__(self, p0, T0, d0, pb, throat_diameter=throat_diameter, discharged=False):      # 0.0016
         self.p0 = p0  # Inlet pressure
@@ -107,10 +110,10 @@ class TurbineDrive:
         Q = self.nozzle.q_max()
         return w * (Q ** (1 / 2)) / ((9.81 * h) ** (3 / 4))
 
-    def max_power(self, efficiency=0.08):
+    def max_power(self):
         if self.p1 < self.p0:
-            return efficiency * self.p1 * self.nozzle.q_max() * math.log(self.p0 / self.p1, np.e)   # method from video
-            #return efficiency * (self.p0 - self.p1) * self.nozzle.q_max()    # method from P.J.
+            return self.efficiency * self.p1 * self.nozzle.q_max() * math.log(self.p0 / self.p1, np.e)   # method from video, isothermal
+            #return self.efficiency * (self.p0 - self.p1) * self.nozzle.q_max()    # method from P.J.
         else:
             return 0
 
@@ -165,7 +168,7 @@ class Aircar:
 
 tank = Tank(p0=600000, T0=298, d0=7)
 nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.99 * tank.p0)
-turbine = TurbineDrive(p0=nozzle.pb, T0=nozzle.T0, d0=nozzle.d0, p1=100000, T1=298, d1=1, nozzle=nozzle)    #the d0 is wrong but not used so ignore for now
+turbine = TurbineDrive(p0=nozzle.pb, T0=nozzle.T0, d0=nozzle.d0, p1=p_ambient, T1=298, d1=1, nozzle=nozzle)    #the d0 is wrong but not used so ignore for now
 car = Aircar(s=0, v=0, a=0, m=3.0, rpm=0, t=turbine.torque(0)*step_down, drive=turbine)
 
 clock = 0
@@ -175,9 +178,6 @@ end = False
 time_list = []
 s_l = []
 v_l = []
-
-
-print(turbine.torque(483))
 
 
 def print_stuff_tank_nozzle():
@@ -198,6 +198,7 @@ def print_stuff_tank_nozzle():
 
 def print_stuff_drive():
     print(round(clock, 1), "s,",
+          "Vehicle data: ",
           round(car.s, 2), "m,",
           round(car.v, 2), "m/s,",
           round(car.a, 2), "m/s^2,",
@@ -227,17 +228,15 @@ while not end:
     else:
         tank = Tank(p0=100000, T0=298, d0=1)
 
-
     print_stuff_drive()
-    print_stuff_tank_nozzle()
-    print_stuff_turbine()
+    #print_stuff_tank_nozzle()
+    #print_stuff_turbine()
 
     time_list.append(clock)
     s_l.append(car.s)
     v_l.append(car.v)
     if car.s > 25 or clock > 30:
         end = True
-
 
 
 plot.plot(time_list, s_l)
