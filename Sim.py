@@ -41,12 +41,13 @@ class Nozzle:
 
     # on further thought,
 
-    def __init__(self, p0, T0, d0, pb, throat_diameter=0.0016):      # 0.0016
+    def __init__(self, p0, T0, d0, pb, throat_diameter=0.0016, discharged=False):      # 0.0016
         self.p0 = p0  # Inlet pressure
         self.T0 = T0  # Inlet temp
         self.d0 = d0  # Inlet density
         self.pb = pb  # back pressure, i.e. pressure going into turbine
         self.throat_diameter = throat_diameter
+        self.discharged = discharged  # A boolean to model if the discharging is complete
 
     def mdot_max(self):
         A_throat = np.pi * (self.throat_diameter / 2) ** 2
@@ -62,15 +63,18 @@ class Nozzle:
 
     def M_exhaust(self):  # Mach no. of flow out of exit
         ratio = self.p0 / self.pb
-        return math.sqrt(5 * (ratio ** (1 / 3.5) - 1))  # inverse of eq. 7.5, one of the isentropic flow relations
+        if not self.discharged:
+            return math.sqrt(5 * (ratio ** (1 / 3.5) - 1))  # inverse of eq. 7.5, one of the isentropic flow relations
+        else:
+            return 0
 
     def exhaust_diameter(self):  # required exhaust area to reach/accommodate pb, using equation 8.7
-        #exp = (1.4 + 1) / (2 * (1.4 - 1))
-        #ratio = ((2 / (1.4 + 1)) * (2 * (1 + (1.4 - 1) * (self.M_exhaust() ** 2) / 2) / (1.4 + 1)) ** exp) / self.M_exhaust()
-
         ratio = ((5/6) * (1 + 0.2*(self.M_exhaust())**2)) ** 3 / self.M_exhaust()
         A_exhaust = ratio * np.pi * (self.throat_diameter / 2) ** 2
-        return math.sqrt(4 * A_exhaust / np.pi)
+        if not self.discharged:
+            return math.sqrt(4 * A_exhaust / np.pi)
+        else:
+            return "discharged"
 
 
 class TurbineDrive:
@@ -110,10 +114,13 @@ class Aircar:
         roll_resist = -0.2  # acceleration due to rolling resistance
         drag = 0.01  # drag proportionality coefficient (not cd, just here for testing reasons)
         wheel_radius = 0.05  # wheel radius in m
-        self.a = self.t / (wheel_radius * self.m) + roll_resist - drag * self.v ** 2
+        if self.v >= 0:
+            self.a = self.t / (wheel_radius * self.m) + roll_resist - drag * self.v ** 2
+        else:
+            self.a = 0
         self.v += self.a * time_step
         self.s += self.v * time_step  # could use RK4 for this, but na
-        self.t = self.t * 0.995
+        self.t = self.t * 0.995     # right now this is NOT linked to time_step, so
         if self.t < 0.03:
             self.t = self.t * 0.5
         return Aircar(self.s, self.v, self.a, self.m, self.t)
@@ -166,16 +173,18 @@ while not end:
     clock += time_step
     test_car = test_car.update(time_step)
     test_nozzle = Nozzle(p0=test_tank.p0, T0=test_tank.T0, d0=test_tank.d0, pb=0.99*test_tank.p0)
-    if test_nozzle.pb < 120000:
-        test_nozzle.pb = 100000
-    test_tank = test_tank.update(time_step, test_nozzle)
+    if test_tank.p0 > 100000/0.98:
+        test_tank = test_tank.update(time_step, test_nozzle)
+    else:
+        test_tank = Tank(p0=100000, T0=298, d0=1)
+
     #print_stuff_drive()
     print_stuff_gas()
 
     time_list.append(clock)
     s_l.append(test_car.s)
     v_l.append(test_car.v)
-    if test_car.s > 25:
+    if test_car.s > 25 or clock > 30:
         end = True
 
 
