@@ -106,7 +106,7 @@ class TurbineDrive:
         self.r = r  # radius
 
     def specific_speed(self, w):
-        h = (self.p0 - self.p1) / 98100
+        h = ((self.p0 - self.p1) / 100000) / 0.0981
         Q = self.nozzle.q_max()
         return w * (Q ** (1 / 2)) / ((9.81 * h) ** (3 / 4))
 
@@ -167,7 +167,7 @@ class Aircar:
 
 
 tank = Tank(p0=600000, T0=298, d0=7)
-nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.99 * tank.p0)
+nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.995 * tank.p0)
 turbine = TurbineDrive(p0=nozzle.pb, T0=nozzle.T0, d0=nozzle.d0, p1=p_ambient, T1=298, d1=1, nozzle=nozzle)    #the d0 is wrong but not used so ignore for now
 car = Aircar(s=0, v=0, a=0, m=3.0, rpm=0, t=turbine.torque(0)*step_down, drive=turbine)
 
@@ -213,8 +213,10 @@ def print_stuff_turbine():
           round(turbine.max_power(), 2), "W max, ",
           round(car.rpm * step_down, 0), "rpm operation, ",
           round(turbine.no_load_rpm(), 0), "rpm max, ",
-          round(turbine.torque(car.rpm * step_down), 2), "Nm operation"
+          round(turbine.torque(car.rpm * step_down), 3), "Nm operation, ",
+          turbine.specific_speed(car.rpm * step_down * 2 * np.pi / 60), "specific speed"
           )
+
 
 
 while not end:
@@ -222,8 +224,8 @@ while not end:
 
     car = car.update(time_step, turbine)
     turbine = TurbineDrive(p0=nozzle.pb, T0=nozzle.T0, d0=nozzle.d0, p1=100000, T1=298, d1=1, nozzle=nozzle)
-    nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.99*tank.p0)
-    if tank.p0 > 100000/0.98:
+    nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.995*tank.p0)
+    if tank.p0 > 100000/0.995:
         tank = tank.update(time_step, nozzle)
     else:
         tank = Tank(p0=100000, T0=298, d0=1)
