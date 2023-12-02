@@ -150,7 +150,7 @@ class Aircar:
         self.step_down = step_down    #step down ratio in gearbox
         self.r = r  # rear wheel radius
         self.rrc = 0.035  # rolling resistance coefficient, https://www.matec-conferences.org/articles/matecconf/pdf/2019/03/matecconf_mms18_01005.pdf
-        self.drivetrain_efficiency = 0.9  # efficiency with account of drivetrain loss
+        self.drivetrain_efficiency = 0.85 #  efficiency with account of drivetrain loss
 
     def frictional_torque(self):
         rolling_resistance_torque = self.rrc * self.m * self.r
@@ -158,27 +158,45 @@ class Aircar:
         M_frictional = 0.00097  # number obtained from SKF bearing tool, from which starting torque is negligible
         return M_frictional * 4 + rolling_resistance_torque
 
+    def kinetic_energy(self):
+        linear = 0.5 * self.m * self.v**2
+        # for rotational inertia, consider rotational inertia of turbine, front wheels and gears (shafts have small R so consider negligible, rear wheels are small and light)
+        I_turbine = 0.5 * 0.044 * 0.04**2  # mass from CAD
+        I_wheel = I_turbine  #  similar size and weight to save time
+        I_Idler = 0.5 * 0.28 * 0.025**2  # mass from CAD
+        I_drive = 0.5 * 0.34 * 0.02752
+
+        KE_rotational_turbine = 0.5 * I_turbine * (self.step_down * self.rpm*2*np.pi/60)**2
+        KE_rotational_wheels = 2 * 0.5 * I_wheel * (self.step_down * self.rpm*2*np.pi/60)**2
+        KE_rotational_idler = 0.5 * I_Idler * (self.rpm*2*np.pi/60)**2
+        KE_rotational_drive = 0.5 * I_drive * (self.rpm*2*np.pi/60)**2
+
+        KE_rotational = KE_rotational_turbine + KE_rotational_wheels + KE_rotational_idler + KE_rotational_drive
+        KE_translational = 0.5 * self.m * self.v**2
+        return KE_translational + KE_rotational
+
     def update(self, time_step, drive):      # change in mass of air canister negligible
-        roll_resist = -0.1  # acceleration due to rolling resistance
-        if self.v >= 0:
-            self.a = self.t / (self.r * self.m) + roll_resist
-        else:
-            self.a = 0
-        self.v += self.a * time_step
-        self.s += self.v * time_step  # could use RK4 for this, but na
         self.rpm = (self.v/self.r) * 60 / (2*np.pi)
-        self.t = drive.torque(self.rpm * self.step_down) * self.step_down
-        #self.t = self.t*0.995
+        self.s += self.v * time_step  # could use RK4 for this, but na
+        self.v += self.a * time_step
+        if self.v >= 0:
+            self.a = self.t / (self.r * self.m)
+        else:
+            self.v = 0
+        self.t = drive.torque(self.rpm * self.step_down) * self.step_down * self.drivetrain_efficiency - self.frictional_torque()
         return Aircar(s=self.s, v=self.v, a=self.a, m=self.m, rpm=self.rpm, t=self.t, drive=self.drive)
 
+
+clock = 0
+time_step = 0.05
 
 tank = Tank(p0=650000, T0=298, d0=7)
 nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.995 * tank.p0)
 turbine = TurbineDrive(p0=nozzle.pb, T0=nozzle.T0, d0=nozzle.d0, p1=p_ambient, T1=298, d1=1, nozzle=nozzle)    #the d0 is wrong but not used so ignore for now
-car = Aircar(s=0, v=0, a=0, m=3.0, rpm=0, t=turbine.torque(0)*step_down, drive=turbine)
+carpre = Aircar(s=0, v=0, a=0, m=3.0, rpm=0, t=turbine.torque(0)*step_down, drive=turbine) #  weird method but use this to calculate starting net torque
+car = Aircar(s=0, v=0, a=0, m=3.0, rpm=0, t=carpre.update(time_step, turbine).t, drive=turbine)
 
-clock = 0
-time_step = 0.05
+
 
 end = False
 time_list = []
@@ -205,11 +223,13 @@ def print_stuff_tank_nozzle():
 def print_stuff_drive():
     print(round(clock, 1), "s,",
           "Vehicle data: ",
+          round(car.frictional_torque(), 4), "Nm frictional",
           round(car.s, 2), "m,",
           round(car.v, 2), "m/s,",
           round(car.a, 2), "m/s^2,",
-          round(car.t, 2), "Nm, ",
-          round(car.rpm, 1), "rpm"
+          round(car.t, 3), "Nm net, ",
+          round(car.rpm, 1), "rpm, ",
+          round(car.kinetic_energy(), 2), "J"
           )
 
 
