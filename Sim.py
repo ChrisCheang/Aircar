@@ -10,9 +10,9 @@ R = 287
 p_ambient = 100000
 
 # Some vehicle properties
-step_down = 7
-throat_diameter = 0.0016
-
+step_down = 4.58
+throat_diameter = 0.002  #0.0016
+turbine_radius = 0.04
 
 class Tank:
     def __init__(self, p0, T0, d0, v=0.002):
@@ -25,7 +25,7 @@ class Tank:
         return (self.p0 * self.v) / (R * self.T0)
 
     def stored_energy_isothermal(self):
-        # isothermal case for overall consideration reasonable (?) as discharge is relatively long at 8 sec
+        # isothermal case for overall consideration reasonable (?) as discharge is relatively long at 8 sec AND is conservative (i.e. less energy)
         return self.p0 * self.v * math.log(self.p0 / p_ambient, np.e)
 
     def update(self, time_step, nozzle):
@@ -94,7 +94,7 @@ class TurbineDrive:
     # blades at atm) and the "swept" area of the blades as the tip speed. A power curve similar to that in the video
     # is then extrapolated using these two values, which can then be used to calculate torque curves etc.
 
-    def __init__(self, p0, T0, d0, p1, T1, d1, nozzle, efficiency=0.1, r=0.03):
+    def __init__(self, p0, T0, d0, p1, T1, d1, nozzle, efficiency=0.1, r=turbine_radius):
         self.p0 = p0  # Inlet pressure
         self.T0 = T0  # Inlet temp
         self.d0 = d0  # Inlet density
@@ -118,7 +118,7 @@ class TurbineDrive:
             return 0
 
     def no_load_w(self):
-        blade_swept_area = 0.010 * 0.010  # thickness * radial depth of blades
+        blade_swept_area = 0.012 * 0.010  # thickness * radial depth of blades
         blade_thickness_ratio = 0.2    # how much of the space is taken up by the blades
         tip_speed = ((self.nozzle.mdot_max() / (1 - blade_thickness_ratio)) / self.d1) / blade_swept_area
         return tip_speed / self.r
@@ -149,13 +149,19 @@ class Aircar:
         self.drive = drive
         self.step_down = step_down    #step down ratio in gearbox
         self.r = r  # rear wheel radius
+        self.rrc = 0.035  # rolling resistance coefficient, https://www.matec-conferences.org/articles/matecconf/pdf/2019/03/matecconf_mms18_01005.pdf
+        self.drivetrain_efficiency = 0.9  # efficiency with account of drivetrain loss
+
+    def frictional_torque(self):
+        rolling_resistance_torque = self.rrc * self.m * self.r
+        radial_load = self.m / 4  # assume 50-50 and symmetric weight distribution
+        M_frictional = 0.00097  # number obtained from SKF bearing tool, from which starting torque is negligible
+        return M_frictional * 4 + rolling_resistance_torque
 
     def update(self, time_step, drive):      # change in mass of air canister negligible
         roll_resist = -0.1  # acceleration due to rolling resistance
-        drag = 0.01  # drag proportionality coefficient (not cd, just here for testing reasons)
-        wheel_radius = 0.05  # wheel radius in m
         if self.v >= 0:
-            self.a = self.t / (wheel_radius * self.m) + roll_resist - drag * self.v ** 2
+            self.a = self.t / (self.r * self.m) + roll_resist
         else:
             self.a = 0
         self.v += self.a * time_step
@@ -166,7 +172,7 @@ class Aircar:
         return Aircar(s=self.s, v=self.v, a=self.a, m=self.m, rpm=self.rpm, t=self.t, drive=self.drive)
 
 
-tank = Tank(p0=600000, T0=298, d0=7)
+tank = Tank(p0=650000, T0=298, d0=7)
 nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.995 * tank.p0)
 turbine = TurbineDrive(p0=nozzle.pb, T0=nozzle.T0, d0=nozzle.d0, p1=p_ambient, T1=298, d1=1, nozzle=nozzle)    #the d0 is wrong but not used so ignore for now
 car = Aircar(s=0, v=0, a=0, m=3.0, rpm=0, t=turbine.torque(0)*step_down, drive=turbine)
