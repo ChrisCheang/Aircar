@@ -221,6 +221,7 @@ end = False
 time_list = []
 s_l = []
 v_l = []
+p_l = []
 
 
 def print_stuff_tank_nozzle():
@@ -238,7 +239,6 @@ def print_stuff_tank_nozzle():
           round(nozzle.M_exhaust(), 2), "Mach, ",
           round(1000 * nozzle.exhaust_diameter(), 5), "mm ", )
 
-
 def print_stuff_drive():
     print(round(clock, 1), "s,",
           "Vehicle data: ",
@@ -250,7 +250,6 @@ def print_stuff_drive():
           round(car.rpm, 1), "rpm, ",
           )
 
-
 def print_stuff_turbine():
     print(round(clock, 1), "s,",
           round(turbine.p0, 1), "Pa (inlet), ",
@@ -260,7 +259,6 @@ def print_stuff_turbine():
           round(turbine.torque(car.rpm * step_down), 3), "Nm operation, ",
           turbine.specific_speed(car.rpm * step_down * 2 * np.pi / 60), "specific speed"
           )
-
 
 
 while not end:
@@ -281,11 +279,25 @@ while not end:
     time_list.append(clock)
     s_l.append(car.s)
     v_l.append(car.v)
+    p_l.append(tank.p0)
     if car.s > 25 or clock > 30:
         end = True
 
 
-plot.plot(time_list, s_l)
+plot.plot(time_list, p_l)
+plot.title('Tank pressure time history')
+plot.xlabel('time (s)')
+plot.ylabel('pressure (Pa)')
 plot.show()
+
+plot.plot(time_list, s_l)
+plot.title('Position time history')
+plot.xlabel('time (s)')
+plot.ylabel('distance (m)')
+plot.show()
+
 plot.plot(time_list, v_l)
+plot.title('Velocity time history')
+plot.xlabel('time (s)')
+plot.ylabel('velocity (m)')
 plot.show()
