@@ -94,7 +94,7 @@ class TurbineDrive:
     # blades at atm) and the "swept" area of the blades as the tip speed. A power curve similar to that in the video
     # is then extrapolated using these two values, which can then be used to calculate torque curves etc.
 
-    def __init__(self, p0, T0, d0, p1, T1, d1, nozzle, efficiency=0.1, r=turbine_radius):
+    def __init__(self, p0, T0, d0, p1, T1, d1, nozzle, efficiency=0.15, r=turbine_radius):
         self.p0 = p0  # Inlet pressure
         self.T0 = T0  # Inlet temp
         self.d0 = d0  # Inlet density
@@ -149,10 +149,9 @@ class Aircar:
         self.drive = drive
         self.step_down = step_down    #step down ratio in gearbox
         self.r = r  # rear wheel radius
-        self.rrc = 0.035  # rolling resistance coefficient, https://www.matec-conferences.org/articles/matecconf/pdf/2019/03/matecconf_mms18_01005.pdf
+        self.rrc = 0.001  # rolling resistance coefficient, https://www.matec-conferences.org/articles/matecconf/pdf/2019/03/matecconf_mms18_01005.pdf
         self.drivetrain_efficiency = 0.85 #  efficiency with account of drivetrain loss
         self._kinetic_energy = kinetic_energy
-        self.set_kinetic_energy
 
     @property
     def set_kinetic_energy(self):
@@ -189,7 +188,7 @@ class Aircar:
         return I_total
 
     def frictional_torque(self):
-        rolling_resistance_torque = self.rrc * self.m * self.r
+        rolling_resistance_torque = self.rrc * self.m * 9.81
         radial_load = self.m / 4  # assume 50-50 and symmetric weight distribution
         M_frictional = 0.00097  # number obtained from SKF bearing tool, from which starting torque is negligible
         return M_frictional * 4 + rolling_resistance_torque
@@ -205,6 +204,7 @@ class Aircar:
         self.t = drive.torque(self.rpm * self.step_down) * self.step_down * self.drivetrain_efficiency - self.frictional_torque()
         return Aircar(s=self.s, v=self.v, a=self.a, m=self.m, rpm=self.rpm, t=self.t, drive=self.drive)
 
+#'''
 
 clock = 0
 time_step = 0.05
@@ -282,13 +282,24 @@ while not end:
     p_l.append(tank.p0)
     if car.s > 25 or clock > 30:
         end = True
+#'''
 
 
+
+'''
+tank = Tank(p0=650000, T0=298, d0=7)
+nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.995 * tank.p0)
+turbine = TurbineDrive(p0=nozzle.pb, T0=nozzle.T0, d0=nozzle.d0, p1=p_ambient, T1=298, d1=1, nozzle=nozzle)
+print(turbine.max_power())
+'''
+
+'''
 plot.plot(time_list, p_l)
 plot.title('Tank pressure time history')
 plot.xlabel('time (s)')
 plot.ylabel('pressure (Pa)')
 plot.show()
+'''
 
 plot.plot(time_list, s_l)
 plot.title('Position time history')
@@ -299,5 +310,6 @@ plot.show()
 plot.plot(time_list, v_l)
 plot.title('Velocity time history')
 plot.xlabel('time (s)')
-plot.ylabel('velocity (m)')
+plot.ylabel('velocity (m/s)')
 plot.show()
+#'''
