@@ -262,7 +262,7 @@ def print_stuff_turbine():
 
 
 while not end:
-    car = car.update(time_step, turbine)
+    car = car.update(time_step, turbine, step_down)
     turbine = TurbineDrive(p0=nozzle.pb, T0=nozzle.T0, d0=nozzle.d0, p1=100000, T1=298, d1=1, nozzle=nozzle)
     nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.995*tank.p0)
     if tank.p0 > 100000/0.995:
@@ -270,7 +270,7 @@ while not end:
     else:
         tank = Tank(p0=100000, T0=298, d0=1)
 
-    #print_stuff_drive()
+    print_stuff_drive()
     #print_stuff_tank_nozzle()
     #print_stuff_turbine()
 
