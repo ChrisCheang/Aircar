@@ -149,7 +149,7 @@ class Aircar:
         self.drive = drive
         self.step_down = step_down    #step down ratio in gearbox
         self.r = r  # rear wheel radius
-        self.rrc = 0.01  # rolling resistance coefficient, https://www.matec-conferences.org/articles/matecconf/pdf/2019/03/matecconf_mms18_01005.pdf
+        self.rrc = 0.015  # rolling resistance coefficient, https://www.matec-conferences.org/articles/matecconf/pdf/2019/03/matecconf_mms18_01005.pdf
         self.drivetrain_efficiency = 0.85 #  efficiency with account of drivetrain loss
         self._kinetic_energy = kinetic_energy
 
@@ -194,13 +194,13 @@ class Aircar:
         return M_frictional * 4 + rolling_resistance_torque
 
     def update(self, time_step, drive):      # change in mass of air canister negligible
-        self.rpm = (self.v/self.r) * 60 / (2*np.pi)
         self.s += self.v * time_step  # could use RK4 for this, but na
         self.v += self.a * time_step
         if self.v >= 0:  #impulse momentum method; check one of the pages on the back of my orange A5 notebook
             self.a = self.t * self.r / (self.inertia_total() + self.m * self.r**2)
         else:
             self.v = 0
+        self.rpm = (self.v / self.r) * 60 / (2 * np.pi)
         self.t = drive.torque(self.rpm * self.step_down) * self.step_down * self.drivetrain_efficiency - self.frictional_torque()
         return Aircar(s=self.s, v=self.v, a=self.a, m=self.m, rpm=self.rpm, t=self.t, drive=self.drive)
 
@@ -262,8 +262,6 @@ def print_stuff_turbine():
 
 
 while not end:
-    clock += time_step
-
     car = car.update(time_step, turbine)
     turbine = TurbineDrive(p0=nozzle.pb, T0=nozzle.T0, d0=nozzle.d0, p1=100000, T1=298, d1=1, nozzle=nozzle)
     nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.995*tank.p0)
@@ -272,7 +270,7 @@ while not end:
     else:
         tank = Tank(p0=100000, T0=298, d0=1)
 
-    print_stuff_drive()
+    #print_stuff_drive()
     #print_stuff_tank_nozzle()
     #print_stuff_turbine()
 
@@ -282,6 +280,7 @@ while not end:
     p_l.append(tank.p0)
     if car.s > 25 or clock > 30:
         end = True
+    clock += time_step
 #'''
 
 
