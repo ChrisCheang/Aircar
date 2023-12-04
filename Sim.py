@@ -139,7 +139,7 @@ class TurbineDrive:
 
 
 class Aircar:
-    def __init__(self, s, v, a, m, rpm, t, drive, step_down=step_down, r=0.0401, kinetic_energy=0):
+    def __init__(self, s, v, a, m, rpm, t, drive, step_down, r=0.0401, kinetic_energy=0):
         self.s = s  # distance travelled, m
         self.v = v  # velocity, m/s
         self.a = a  # acceleration, m/s^2
@@ -193,7 +193,7 @@ class Aircar:
         M_frictional = 0.00097  # number obtained from SKF bearing tool, from which starting torque is negligible
         return M_frictional * 4 + rolling_resistance_torque
 
-    def update(self, time_step, drive):      # change in mass of air canister negligible
+    def update(self, time_step, drive, ratio):      # change in mass of air canister negligible
         self.s += self.v * time_step  # could use RK4 for this, but na
         self.v += self.a * time_step
         if self.v >= 0:  #impulse momentum method; check one of the pages on the back of my orange A5 notebook
@@ -202,7 +202,7 @@ class Aircar:
             self.v = 0
         self.rpm = (self.v / self.r) * 60 / (2 * np.pi)
         self.t = drive.torque(self.rpm * self.step_down) * self.step_down * self.drivetrain_efficiency - self.frictional_torque()
-        return Aircar(s=self.s, v=self.v, a=self.a, m=self.m, rpm=self.rpm, t=self.t, drive=self.drive)
+        return Aircar(s=self.s, v=self.v, a=self.a, m=self.m, rpm=self.rpm, t=self.t, drive=self.drive, step_down=ratio)
 
 #'''
 
@@ -213,7 +213,7 @@ tank = Tank(p0=650000, T0=298, d0=7)
 nozzle = Nozzle(p0=tank.p0, T0=tank.T0, d0=tank.d0, pb=0.995 * tank.p0)
 turbine = TurbineDrive(p0=nozzle.pb, T0=nozzle.T0, d0=nozzle.d0, p1=p_ambient, T1=298, d1=1, nozzle=nozzle)    #the d0 is wrong but not used so ignore for now
 #carpre = Aircar(s=0, v=0, a=0, m=3.0, rpm=0, t=turbine.torque(0)*step_down, drive=turbine) #  weird method but use this to calculate starting net torque
-car = Aircar(s=0, v=0, a=0, m=3.0, rpm=0, t=turbine.torque(0) * step_down * 0.85, drive=turbine)
+car = Aircar(s=0, v=0, a=0, m=3.0, rpm=0, t=turbine.torque(0) * step_down * 0.85, drive=turbine, step_down=step_down)
 
 
 
