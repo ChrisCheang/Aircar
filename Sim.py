@@ -94,7 +94,7 @@ class TurbineDrive:
     # blades at atm) and the "swept" area of the blades as the tip speed. A power curve similar to that in the video
     # is then extrapolated using these two values, which can then be used to calculate torque curves etc.
 
-    def __init__(self, p0, T0, d0, p1, T1, d1, nozzle, efficiency=0.15, r=turbine_radius):
+    def __init__(self, p0, T0, d0, p1, T1, d1, nozzle, efficiency=0.1, r=turbine_radius):
         self.p0 = p0  # Inlet pressure
         self.T0 = T0  # Inlet temp
         self.d0 = d0  # Inlet density
@@ -119,7 +119,7 @@ class TurbineDrive:
 
     def no_load_w(self):
         blade_swept_area = 0.012 * 0.010  # thickness * radial depth of blades
-        blade_thickness_ratio = 0.2    # how much of the space is taken up by the blades
+        blade_thickness_ratio = 0.0    # how much of the space is taken up by the blades
         tip_speed = ((self.nozzle.mdot_max() / (1 - blade_thickness_ratio)) / self.d1) / blade_swept_area
         return tip_speed / self.r
 
@@ -149,7 +149,7 @@ class Aircar:
         self.drive = drive
         self.step_down = step_down    #step down ratio in gearbox
         self.r = r  # rear wheel radius
-        self.rrc = 0.001  # rolling resistance coefficient, https://www.matec-conferences.org/articles/matecconf/pdf/2019/03/matecconf_mms18_01005.pdf
+        self.rrc = 0.01  # rolling resistance coefficient, https://www.matec-conferences.org/articles/matecconf/pdf/2019/03/matecconf_mms18_01005.pdf
         self.drivetrain_efficiency = 0.85 #  efficiency with account of drivetrain loss
         self._kinetic_energy = kinetic_energy
 
@@ -188,7 +188,7 @@ class Aircar:
         return I_total
 
     def frictional_torque(self):
-        rolling_resistance_torque = self.rrc * self.m * 9.81
+        rolling_resistance_torque = self.rrc * self.m * self.r * 9.81
         radial_load = self.m / 4  # assume 50-50 and symmetric weight distribution
         M_frictional = 0.00097  # number obtained from SKF bearing tool, from which starting torque is negligible
         return M_frictional * 4 + rolling_resistance_torque
