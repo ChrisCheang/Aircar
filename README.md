@@ -1,1 +1,1 @@
-'Simulator for Aircar project, including basic performance simulation' 
+Simulator for Aircar project, including basic performance simulation
